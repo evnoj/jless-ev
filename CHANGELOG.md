@@ -1,10 +1,12 @@
-main
-====
-
+v0.9.1 (2026-02-21)
+==================
 Improvements:
-- [Issue #143]: `ctrl-z` will now send jless to the background
+- `ctrl-z` will now send jless to the background
 - `:w[rite] <file>` and `:w[rite]! <file>` can be used to write the
-  current input to a file
+
+Fixes:
+- on macOS, `jless` will now detect when the terminal window size changes. Previously, it wouldn't adjust to fit the new size until a key was pressed.
+  - fixes [issue #2](https://github.com/PaulJuliusMartinez/jless/issues/2)
 
 v0.9.0 (2023-07-16)
 ==================
