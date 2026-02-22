@@ -108,12 +108,14 @@ impl<'a> JsonParser<'a> {
             JsonToken::False => self.parse_bool(false),
             JsonToken::Number => self.parse_number(),
             JsonToken::String => self.parse_string(),
-            JsonToken::Whitespace | JsonToken::Newline => panic!("Should have just consumed whitespace"),
+            JsonToken::Whitespace | JsonToken::Newline => {
+                panic!("Should have just consumed whitespace")
+            }
             JsonToken::Error => Err("Parse error".to_string()),
             JsonToken::CloseCurly
             | JsonToken::CloseSquare
             | JsonToken::Colon
-            | JsonToken::Comma => Err(format!("Unexpected character: {:?}", self.tokenizer.span()))
+            | JsonToken::Comma => Err(format!("Unexpected character: {:?}", self.tokenizer.span())),
         }
     }
 

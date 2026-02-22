@@ -214,7 +214,13 @@ impl Iterator for TuiInput {
 
         loop {
             match unsafe {
-                libc::select(nfds, &mut readfds, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut())
+                libc::select(
+                    nfds,
+                    &mut readfds,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
             } {
                 -1 => {
                     let err = io::Error::last_os_error();

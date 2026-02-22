@@ -5,8 +5,6 @@ replacement for whatever combination of `less`, `jq`, `cat` and your
 editor you currently use for viewing JSON files. It is written in Rust
 and can be installed as a single standalone binary.
 
-[![ci](https://github.com/PaulJuliusMartinez/jless/actions/workflows/ci.yml/badge.svg?branch=master&event=push)](https://github.com/PaulJuliusMartinez/jless/actions/workflows/ci.yml)
-
 ### Features
 
 - Clean syntax highlighted display of JSON data, omitting quotes around
