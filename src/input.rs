@@ -7,8 +7,6 @@ use std::io::{stdin, Read, Stdin};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 
-const POLL_INFINITE_TIMEOUT: i32 = -1;
-const SIGWINCH_PIPE_INDEX: usize = 0;
 const BUFFER_SIZE: usize = 1024;
 
 const ESCAPE: u8 = 0o33;
@@ -151,31 +149,17 @@ impl<const N: usize> Iterator for BufferedInput<N> {
 }
 
 struct TuiInput {
-    poll_fds: [libc::pollfd; 2],
+    stdin_fd: libc::c_int,
+    sigwinch_fd: libc::c_int,
     sigwinch_pipe: UnixStream,
     buffered_input: BufferedInput<BUFFER_SIZE>,
 }
 
 impl TuiInput {
     fn new(input: Stdin, sigwinch_pipe: UnixStream) -> TuiInput {
-        let sigwinch_fd = sigwinch_pipe.as_raw_fd();
-        let stdin_fd = input.as_raw_fd();
-
-        let poll_fds: [libc::pollfd; 2] = [
-            libc::pollfd {
-                fd: sigwinch_fd,
-                events: libc::POLLIN,
-                revents: 0,
-            },
-            libc::pollfd {
-                fd: stdin_fd,
-                events: libc::POLLIN,
-                revents: 0,
-            },
-        ];
-
         TuiInput {
-            poll_fds,
+            stdin_fd: input.as_raw_fd(),
+            sigwinch_fd: sigwinch_pipe.as_raw_fd(),
             sigwinch_pipe,
             buffered_input: BufferedInput::new(input),
         }
@@ -213,30 +197,38 @@ impl Iterator for TuiInput {
             return self.get_event_from_buffered_input();
         }
 
-        let poll_res: Option<io::Error>;
+        // Build the fd_set for select(). select() modifies the set in place to
+        // indicate which fds are ready, so we rebuild it on each EINTR retry.
+        let build_readfds = |stdin_fd, sigwinch_fd| -> libc::fd_set {
+            let mut readfds: libc::fd_set = unsafe { std::mem::zeroed() };
+            unsafe {
+                libc::FD_ZERO(&mut readfds);
+                libc::FD_SET(stdin_fd, &mut readfds);
+                libc::FD_SET(sigwinch_fd, &mut readfds);
+            }
+            readfds
+        };
+
+        let nfds = self.stdin_fd.max(self.sigwinch_fd) + 1;
+        let mut readfds = build_readfds(self.stdin_fd, self.sigwinch_fd);
 
         loop {
-            match unsafe { libc::poll(self.poll_fds.as_mut_ptr(), 2, POLL_INFINITE_TIMEOUT) } {
+            match unsafe {
+                libc::select(nfds, &mut readfds, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut())
+            } {
                 -1 => {
                     let err = io::Error::last_os_error();
                     if err.kind() != io::ErrorKind::Interrupted {
-                        poll_res = Some(err);
-                        break;
+                        return Some(Err(err));
                     }
-                    // Try poll again.
+                    // EINTR — select() may have clobbered readfds, rebuild and retry.
+                    readfds = build_readfds(self.stdin_fd, self.sigwinch_fd);
                 }
-                _ => {
-                    poll_res = None;
-                    break;
-                }
-            };
+                _ => break,
+            }
         }
 
-        if let Some(poll_err) = poll_res {
-            return Some(Err(poll_err));
-        }
-
-        if self.poll_fds[SIGWINCH_PIPE_INDEX].revents & libc::POLLIN != 0 {
+        if unsafe { libc::FD_ISSET(self.sigwinch_fd, &readfds) } {
             // Just make this big enough to absorb a bunch of unacknowledged SIGWINCHes.
             let mut buf = [0; 32];
             let _ = self.sigwinch_pipe.read(&mut buf);
